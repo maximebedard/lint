@@ -1,16 +1,19 @@
 sudo: false
 language: go
 go:
-  - 1.7.x
   - 1.8.x
   - 1.9.x
+  - 1.10.x
   - master
+ruby:
+  - 2.3.3
+before_install: gem install bundler -v 1.16.0
 
 install:
   - go get -t -v ./...
 
 script:
-  - go test -v -race ./...
+  - make test
 
 matrix:
   allow_failures:

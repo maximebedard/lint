@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+platform = `uname -sm`
+
+dir =
+  case platform
+  when /^Darwin/    ; "darwin-amd64"
+  when /^Linux.*64/ ; "linux-amd64"
+  else
+    abort "pikeman is not supported on your platform."
+  end
+
+bindir = File.expand_path("../../build/#{dir}", __FILE__)
+puts bindir
+ENV["PATH"] = "#{bindir}:#{ENV["PATH"]}"
+exec "pikeman", *ARGV

@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/build"
@@ -22,7 +23,9 @@ import (
 var (
 	minConfidence = flag.Float64("min_confidence", 0.8, "minimum confidence of a problem to print it")
 	setExitStatus = flag.Bool("set_exit_status", false, "set exit status to 1 if any issues are found")
+	formatterType = flag.String("format", "text", "set the format. Available: text, json.")
 	suggestions   int
+	formatter     problemFormatter
 )
 
 func usage() {
@@ -31,6 +34,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "\tgolint [flags] [packages]\n")
 	fmt.Fprintf(os.Stderr, "\tgolint [flags] [directories] # where a '/...' suffix includes all sub-directories\n")
 	fmt.Fprintf(os.Stderr, "\tgolint [flags] [files] # all must belong to a single package\n")
+	fmt.Fprintf(os.Stderr, "Version: %s\n", VERSION)
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	flag.PrintDefaults()
 }
@@ -38,6 +42,13 @@ func usage() {
 func main() {
 	flag.Usage = usage
 	flag.Parse()
+
+	switch *formatterType {
+	case "json":
+		formatter = &jsonFormatter{}
+	default:
+		formatter = &textFormatter{}
+	}
 
 	if flag.NArg() == 0 {
 		lintDir(".")
@@ -89,6 +100,49 @@ func main() {
 	}
 }
 
+type textFormatter struct{}
+
+func (tf *textFormatter) Write(p lint.Problem) {
+	fmt.Printf("%v: %s\n", p.Position, p.Text)
+}
+
+type problemFormatter interface {
+	Write(p lint.Problem)
+}
+
+type jsonFormatter struct{}
+
+type jsonProblem struct {
+	Filename   string  `json:"filename"`
+	Line       int     `json:"line"`
+	Column     int     `json:"column"`
+	Text       string  `json:"text"`
+	Link       string  `json:"link"`
+	Confidence float64 `json:"confidence"`
+	LineText   string  `json:"linetext"`
+	Category   string  `json:"category"`
+}
+
+func (jf *jsonFormatter) Write(p lint.Problem) {
+	b, err := json.Marshal(jsonProblem{
+		Filename:   p.Position.Filename,
+		Line:       p.Position.Line,
+		Column:     p.Position.Column,
+		Text:       p.Text,
+		Link:       p.Link,
+		Confidence: p.Confidence,
+		LineText:   p.LineText,
+		Category:   p.Category,
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "an unknown error as occured: %s", err.Error())
+		os.Exit(1)
+	}
+
+	os.Stdout.Write(b)
+}
+
 func isDir(filename string) bool {
 	fi, err := os.Stat(filename)
 	return err == nil && fi.IsDir()
@@ -118,7 +172,7 @@ func lintFiles(filenames ...string) {
 	}
 	for _, p := range ps {
 		if p.Confidence >= *minConfidence {
-			fmt.Printf("%v: %s\n", p.Position, p.Text)
+			formatter.Write(p)
 			suggestions++
 		}
 	}
