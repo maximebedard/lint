@@ -15,14 +15,16 @@ Gem::Specification.new do |spec|
 
   spec.files         = `git ls-files -z`.split("\x0").reject do |f|
     f.match(%r{^(test|spec|features)/})
-  end
+  end + [
+    "build/darwin-amd64/pikeman",
+    "build/linux-amd64/pikeman",
+  ]
 
   spec.executables   = ["pikeman"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "cli-kit"
+  spec.add_dependency "cli-kit", "~> 3.0"
   spec.add_development_dependency "bundler", "~> 1.16"
   spec.add_development_dependency "rake", "~> 10.0"
   spec.add_development_dependency "minitest", "~> 5.0"
-  spec.add_development_dependency "pry-byebug"
 end

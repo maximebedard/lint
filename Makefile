@@ -1,10 +1,14 @@
 NAME=pikeman
-PACKAGE=github.com/maximebedard/pikeman
+GO_PACKAGE=github.com/maximebedard/pikeman
+RUBY_MODULE=Pikeman
 VERSION=$(shell cat VERSION)
 GOFILES=$(shell find . -type f -name '*.go')
+GEM=$(NAME)-$(VERSION).gem
+
+.PHONY: all
 
 default: release
-release: $(NAME).gem
+release: $(GEM)
 test: gotest rbtest
 binaries: build/linux-amd64/pikeman build/darwin-amd64/pikeman
 
@@ -20,13 +24,14 @@ gotest:
 rbtest:
 	bundle exec rake test
 
-$(NAME).gem: \
+$(GEM): \
 	lib/$(NAME)/version.rb \
 	build/linux-amd64/pikeman \
-	build/darwin-amd64/pikeman \
-	gem build pikeman.gemspec
+	build/darwin-amd64/pikeman
+	gem build pikeman.gemspec && gem push $@ && rm $@
 
 golint/version.go: VERSION
+	mkdir -p $(@D)
 	echo 'package main\n\nconst VERSION string = "$(VERSION)"' > $@
 
 lib/$(NAME)/version.rb: VERSION
