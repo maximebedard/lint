@@ -1,11 +1,10 @@
 package lint
 
 import (
-	"filepath"
-	"fmt"
+	"bytes"
 	"io"
-	"ioutil"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
@@ -76,29 +75,73 @@ ContextArgs:
   Enabled: true
 `)
 
-type Rule struct {
+type Rule interface {
+	IsEnabled() bool
+}
+
+type rule struct {
 	Enabled bool `yaml:"Enabled"`
 }
 
-type PackageCommentRule struct{ Rule }
-type ImportsRule struct{ Rule }
-type BlankImportsRule struct{ Rule }
-type ExportedRule struct{ Rule }
-type NamesRule struct{ Rule }
-type VarDeclsRule struct{ Rule }
-type ElsesRule struct{ Rule }
-type IfErrorRule struct{ Rule }
-type RangesRule struct{ Rule }
-type ErrorfRule struct{ Rule }
-type ErrorsRule struct{ Rule }
-type ErrorStringsRule struct{ Rule }
-type ReceiverNamesRule struct{ Rule }
-type IncDecRule struct{ Rule }
-type ErrorReturnRule struct{ Rule }
-type UnexportedReturnRule struct{ Rule }
-type TimeNamesRule struct{ Rule }
-type ContextKeyTypesRule struct{ Rule }
-type ContextArgsRule struct{ Rule }
+func (r rule) IsEnabled() bool { return r.Enabled }
+
+type PackageCommentRule struct {
+	rule `yaml:",inline"`
+}
+type ImportsRule struct {
+	rule `yaml:",inline"`
+}
+type BlankImportsRule struct {
+	rule `yaml:",inline"`
+}
+type ExportedRule struct {
+	rule `yaml:",inline"`
+}
+type NamesRule struct {
+	rule `yaml:",inline"`
+}
+type VarDeclsRule struct {
+	rule `yaml:",inline"`
+}
+type ElsesRule struct {
+	rule `yaml:",inline"`
+}
+type IfErrorRule struct {
+	rule `yaml:",inline"`
+}
+type RangesRule struct {
+	rule `yaml:",inline"`
+}
+type ErrorfRule struct {
+	rule `yaml:",inline"`
+}
+type ErrorsRule struct {
+	rule `yaml:",inline"`
+}
+type ErrorStringsRule struct {
+	rule `yaml:",inline"`
+}
+type ReceiverNamesRule struct {
+	rule `yaml:",inline"`
+}
+type IncDecRule struct {
+	rule `yaml:",inline"`
+}
+type ErrorReturnRule struct {
+	rule `yaml:",inline"`
+}
+type UnexportedReturnRule struct {
+	rule `yaml:",inline"`
+}
+type TimeNamesRule struct {
+	rule `yaml:",inline"`
+}
+type ContextKeyTypesRule struct {
+	rule `yaml:",inline"`
+}
+type ContextArgsRule struct {
+	rule `yaml:",inline"`
+}
 
 type Config struct {
 	Includes []string `yaml:"Includes"`
@@ -125,13 +168,13 @@ type Config struct {
 	ContextArgs      ContextArgsRule      `yaml:"ContextArgs"`
 }
 
-func ReadConfigFromWorkspace() (*Config, error) {
+func ReadConfigFromWorkingDir() (*Config, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	config, err := searchConfig(wd)
+	reader, err := backtrackConfig(wd)
 	if err != nil {
 		return nil, err
 	}
@@ -150,20 +193,20 @@ func ReadConfig(path string) (*Config, error) {
 
 func decodeConfig(reader io.Reader) (*Config, error) {
 	var config Config
-	err = yaml.NewDecoder(reader).Decode(&config)
+	err := yaml.NewDecoder(reader).Decode(&config)
 	if err != nil {
 		return nil, err
 	}
-	return config, nil
+	return &config, nil
 }
 
-func backtrackConfig(wd string) (io.Reader, err) {
+func backtrackConfig(wd string) (io.Reader, error) {
 	configPath := filepath.Join(wd, ".pikeman.yml")
 	_, err := os.Stat(configPath)
 
 	switch {
 	case os.IsNotExist(err) && wd == "/":
-		return nil, fmt.Errorf(".pikeman.yml is nowhere to be found.")
+		return bytes.NewReader(defaultConfig), nil
 	case os.IsNotExist(err):
 		previousDir := filepath.Dir(filepath.Join(wd, ".."))
 		return backtrackConfig(previousDir)

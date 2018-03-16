@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    pikeman (0.0.1)
+    pikeman (0.0.3)
       cli-kit (~> 3.0)
 
 GEM

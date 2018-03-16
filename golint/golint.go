@@ -17,15 +17,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/lint"
+	"github.com/maximebedard/pikeman"
 )
 
 var (
 	minConfidence = flag.Float64("min_confidence", 0.8, "minimum confidence of a problem to print it")
 	setExitStatus = flag.Bool("set_exit_status", false, "set exit status to 1 if any issues are found")
 	formatterType = flag.String("format", "text", "set the format. Available: text, json.")
+	configPath    = flag.String("config_path", "", "set the configuration file.")
 	suggestions   int
 	formatter     problemFormatter
+	config        *lint.Config
 )
 
 func usage() {
@@ -48,6 +50,18 @@ func main() {
 		formatter = &jsonFormatter{}
 	default:
 		formatter = &textFormatter{}
+	}
+
+	var err error
+	if *configPath != "" {
+		config, err = lint.ReadConfig(*configPath)
+	} else {
+		config, err = lint.ReadConfigFromWorkingDir()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "An error occured trying to read the config file: %s", err.Error())
+		os.Exit(1)
 	}
 
 	if flag.NArg() == 0 {
@@ -164,7 +178,7 @@ func lintFiles(filenames ...string) {
 		files[filename] = src
 	}
 
-	l := new(lint.Linter)
+	l := &lint.Linter{Config: config}
 	ps, err := l.LintFiles(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

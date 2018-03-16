@@ -30,6 +30,7 @@ const styleGuideBase = "https://golang.org/wiki/CodeReviewComments"
 
 // A Linter lints Go source code.
 type Linter struct {
+	Config *Config
 }
 
 // Problem represents a problem in some source code.
@@ -86,6 +87,36 @@ func (l *Linter) LintFiles(files map[string][]byte) ([]Problem, error) {
 		fset:  token.NewFileSet(),
 		files: make(map[string]*file),
 	}
+
+	rules := map[Rule]func(f *file){
+		l.Config.PackageComment:   lintPackageComment,
+		l.Config.Imports:          lintImports,
+		l.Config.BlankImports:     lintBlankImports,
+		l.Config.Exported:         lintExported,
+		l.Config.Names:            lintNames,
+		l.Config.VarDecls:         lintVarDecls,
+		l.Config.Elses:            lintElses,
+		l.Config.IfError:          lintIfError,
+		l.Config.Ranges:           lintRanges,
+		l.Config.Errorf:           lintErrorf,
+		l.Config.Errors:           lintErrors,
+		l.Config.ErrorStrings:     lintErrorStrings,
+		l.Config.ReceiverNames:    lintReceiverNames,
+		l.Config.IncDec:           lintIncDec,
+		l.Config.ErrorReturn:      lintErrorReturn,
+		l.Config.UnexportedReturn: lintUnexportedReturn,
+		l.Config.TimeNames:        lintTimeNames,
+		l.Config.ContextKeyTypes:  lintContextKeyTypes,
+		l.Config.ContextArgs:      lintContextArgs,
+	}
+
+	var enabledRules []func(f *file)
+	for rule, fn := range rules {
+		if rule.IsEnabled() {
+			enabledRules = append(enabledRules, fn)
+		}
+	}
+
 	var pkgName string
 	for filename, src := range files {
 		if isGenerated(src) {
@@ -106,6 +137,7 @@ func (l *Linter) LintFiles(files map[string][]byte) ([]Problem, error) {
 			fset:     pkg.fset,
 			src:      src,
 			filename: filename,
+			rules:    enabledRules,
 		}
 	}
 	if len(pkg.files) == 0 {
@@ -187,30 +219,15 @@ type file struct {
 	fset     *token.FileSet
 	src      []byte
 	filename string
+	rules    []func(*file)
 }
 
 func (f *file) isTest() bool { return strings.HasSuffix(f.filename, "_test.go") }
 
 func (f *file) lint() {
-	f.lintPackageComment()
-	f.lintImports()
-	f.lintBlankImports()
-	f.lintExported()
-	f.lintNames()
-	f.lintVarDecls()
-	f.lintElses()
-	f.lintIfError()
-	f.lintRanges()
-	f.lintErrorf()
-	f.lintErrors()
-	f.lintErrorStrings()
-	f.lintReceiverNames()
-	f.lintIncDec()
-	f.lintErrorReturn()
-	f.lintUnexportedReturn()
-	f.lintTimeNames()
-	f.lintContextKeyTypes()
-	f.lintContextArgs()
+	for _, rule := range f.rules {
+		rule(f)
+	}
 }
 
 type link string
@@ -377,7 +394,7 @@ func (f *file) isMain() bool {
 // This has a notable false positive in that a package comment
 // could rightfully appear in a different file of the same package,
 // but that's not easy to fix since this linter is file-oriented.
-func (f *file) lintPackageComment() {
+func lintPackageComment(f *file) {
 	if f.isTest() {
 		return
 	}
@@ -430,7 +447,7 @@ func (f *file) lintPackageComment() {
 
 // lintBlankImports complains if a non-main package has blank imports that are
 // not documented.
-func (f *file) lintBlankImports() {
+func lintBlankImports(f *file) {
 	// In package main and in tests, we don't complain about blank imports.
 	if f.pkg.main || f.isTest() {
 		return
@@ -461,7 +478,7 @@ func (f *file) lintBlankImports() {
 }
 
 // lintImports examines import blocks.
-func (f *file) lintImports() {
+func lintImports(f *file) {
 	for i, is := range f.f.Imports {
 		_ = i
 		if is.Name != nil && is.Name.Name == "." && !f.isTest() {
@@ -481,7 +498,7 @@ const docCommentsLink = styleGuideBase + "#doc-comments"
 // doc comments for constants to be on top of the const block.
 // It also complains if the names stutter when combined with
 // the package name.
-func (f *file) lintExported() {
+func lintExported(f *file) {
 	if f.isTest() {
 		return
 	}
@@ -542,7 +559,7 @@ var knownNameExceptions = map[string]bool{
 
 // lintNames examines all names in the file.
 // It complains if any use underscores or incorrect known initialisms.
-func (f *file) lintNames() {
+func lintNames(f *file) {
 	// Package names need slightly different handling than other names.
 	if strings.Contains(f.f.Name.Name, "_") && !strings.HasSuffix(f.f.Name.Name, "_test") {
 		f.errorf(f.f, 1, link("http://golang.org/doc/effective_go.html#package-names"), category("naming"), "don't use an underscore in package name")
@@ -957,7 +974,7 @@ var zeroLiteral = map[string]bool{
 
 // lintVarDecls examines variable declarations. It complains about declarations with
 // redundant LHS types that can be inferred from the RHS.
-func (f *file) lintVarDecls() {
+func lintVarDecls(f *file) {
 	var lastGen *ast.GenDecl // last GenDecl entered.
 
 	f.walk(func(node ast.Node) bool {
@@ -1034,7 +1051,7 @@ func validType(T types.Type) bool {
 }
 
 // lintElses examines else blocks. It complains about any else block whose if block ends in a return.
-func (f *file) lintElses() {
+func lintElses(f *file) {
 	// We don't want to flag if { } else if { } else { } constructions.
 	// They will appear as an IfStmt whose Else field is also an IfStmt.
 	// Record such a node so we ignore it when we visit it.
@@ -1078,7 +1095,7 @@ func (f *file) lintElses() {
 }
 
 // lintRanges examines range clauses. It complains about redundant constructions.
-func (f *file) lintRanges() {
+func lintRanges(f *file) {
 	f.walk(func(node ast.Node) bool {
 		rs, ok := node.(*ast.RangeStmt)
 		if !ok {
@@ -1109,7 +1126,7 @@ func (f *file) lintRanges() {
 }
 
 // lintErrorf examines errors.New and testing.Error calls. It complains if its only argument is an fmt.Sprintf invocation.
-func (f *file) lintErrorf() {
+func lintErrorf(f *file) {
 	f.walk(func(node ast.Node) bool {
 		ce, ok := node.(*ast.CallExpr)
 		if !ok || len(ce.Args) != 1 {
@@ -1147,7 +1164,7 @@ func (f *file) lintErrorf() {
 }
 
 // lintErrors examines global error vars. It complains if they aren't named in the standard way.
-func (f *file) lintErrors() {
+func lintErrors(f *file) {
 	for _, decl := range f.f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok || gd.Tok != token.VAR {
@@ -1202,7 +1219,7 @@ func lintErrorString(s string) (isClean bool, conf float64) {
 
 // lintErrorStrings examines error strings.
 // It complains if they are capitalized or end in punctuation or a newline.
-func (f *file) lintErrorStrings() {
+func lintErrorStrings(f *file) {
 	f.walk(func(node ast.Node) bool {
 		ce, ok := node.(*ast.CallExpr)
 		if !ok {
@@ -1235,7 +1252,7 @@ func (f *file) lintErrorStrings() {
 
 // lintReceiverNames examines receiver names. It complains about inconsistent
 // names used for the same type and names such as "this".
-func (f *file) lintReceiverNames() {
+func lintReceiverNames(f *file) {
 	typeReceiver := map[string]string{}
 	f.walk(func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
@@ -1268,7 +1285,7 @@ func (f *file) lintReceiverNames() {
 
 // lintIncDec examines statements that increment or decrement a variable.
 // It complains if they don't use x++ or x--.
-func (f *file) lintIncDec() {
+func lintIncDec(f *file) {
 	f.walk(func(n ast.Node) bool {
 		as, ok := n.(*ast.AssignStmt)
 		if !ok {
@@ -1296,7 +1313,7 @@ func (f *file) lintIncDec() {
 
 // lintErrorReturn examines function declarations that return an error.
 // It complains if the error isn't the last parameter.
-func (f *file) lintErrorReturn() {
+func lintErrorReturn(f *file) {
 	f.walk(func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
 		if !ok || fn.Type.Results == nil {
@@ -1320,7 +1337,7 @@ func (f *file) lintErrorReturn() {
 
 // lintUnexportedReturn examines exported function declarations.
 // It complains if any return an unexported type.
-func (f *file) lintUnexportedReturn() {
+func lintUnexportedReturn(f *file) {
 	f.walk(func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
 		if !ok {
@@ -1384,7 +1401,7 @@ var timeSuffixes = []string{
 	"MS", "Ms",
 }
 
-func (f *file) lintTimeNames() {
+func lintTimeNames(f *file) {
 	f.walk(func(node ast.Node) bool {
 		v, ok := node.(*ast.ValueSpec)
 		if !ok {
@@ -1420,7 +1437,7 @@ func (f *file) lintTimeNames() {
 // lintContextKeyTypes checks for call expressions to context.WithValue with
 // basic types used for the key argument.
 // See: https://golang.org/issue/17293
-func (f *file) lintContextKeyTypes() {
+func lintContextKeyTypes(f *file) {
 	f.walk(func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.CallExpr:
@@ -1460,7 +1477,7 @@ func (f *file) checkContextKeyType(x *ast.CallExpr) {
 // lintContextArgs examines function declarations that contain an
 // argument with a type of context.Context
 // It complains if that argument isn't the first parameter.
-func (f *file) lintContextArgs() {
+func lintContextArgs(f *file) {
 	f.walk(func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
 		if !ok || len(fn.Type.Params.List) <= 1 {
@@ -1500,7 +1517,7 @@ func (f *file) containsComments(start, end token.Pos) bool {
 	return false
 }
 
-func (f *file) lintIfError() {
+func lintIfError(f *file) {
 	f.walk(func(node ast.Node) bool {
 		switch v := node.(type) {
 		case *ast.BlockStmt:
