@@ -10,6 +10,5 @@ dir =
   end
 
 bindir = File.expand_path("../../build/#{dir}", __FILE__)
-puts bindir
 ENV["PATH"] = "#{bindir}:#{ENV["PATH"]}"
 exec "pikeman", *ARGV
