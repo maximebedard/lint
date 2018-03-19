@@ -11,8 +11,7 @@ module Pikeman
 
   def self.lint_file(absolute_path, _config_absolute_path = nil)
     out_and_err, _stat = CLI::Kit::System.capture2e(binary, "-format", "json", absolute_path)
-    out_and_err.each_line.map do |line|
-      data = JSON.parse(line)
+    JSON.parse(out_and_err).map do |data|
       Error.new(
         filename: data.fetch("filename"),
         line: data.fetch("line"),

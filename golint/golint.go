@@ -60,8 +60,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "An error occured trying to read the config file: %s", err.Error())
-		os.Exit(1)
+		writeError(1, "unable to read configuration file", err.Error())
 	}
 
 	if flag.NArg() == 0 {
@@ -109,19 +108,25 @@ func main() {
 	}
 
 	if *setExitStatus && suggestions > 0 {
-		fmt.Fprintf(os.Stderr, "Found %d lint suggestions; failing.\n", suggestions)
-		os.Exit(1)
+		writeError(1, "Found %d lint suggestions; failing.\n", suggestions)
 	}
+}
+
+func writeError(code int, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args)
+	os.Exit(1)
 }
 
 type textFormatter struct{}
 
-func (tf *textFormatter) Write(p lint.Problem) {
-	fmt.Printf("%v: %s\n", p.Position, p.Text)
+func (tf *textFormatter) Write(ps []lint.Problem) {
+	for _, p := range ps {
+		fmt.Printf("%v: %s\n", p.Position, p.Text)
+	}
 }
 
 type problemFormatter interface {
-	Write(p lint.Problem)
+	Write([]lint.Problem)
 }
 
 type jsonFormatter struct{}
@@ -137,23 +142,23 @@ type jsonProblem struct {
 	Category   string  `json:"category"`
 }
 
-func (jf *jsonFormatter) Write(p lint.Problem) {
-	b, err := json.Marshal(jsonProblem{
-		Filename:   p.Position.Filename,
-		Line:       p.Position.Line,
-		Column:     p.Position.Column,
-		Text:       p.Text,
-		Link:       p.Link,
-		Confidence: p.Confidence,
-		LineText:   p.LineText,
-		Category:   p.Category,
-	})
+func (jf *jsonFormatter) Write(ps []lint.Problem) {
+	problems := make([]jsonProblem, len(ps))
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "an unknown error as occured: %s", err.Error())
-		os.Exit(1)
+	for i, p := range ps {
+		problems[i] = jsonProblem{
+			Filename:   p.Position.Filename,
+			Line:       p.Position.Line,
+			Column:     p.Position.Column,
+			Text:       p.Text,
+			Link:       p.Link,
+			Confidence: p.Confidence,
+			LineText:   p.LineText,
+			Category:   p.Category,
+		}
 	}
 
+	b, _ := json.Marshal(problems)
 	os.Stdout.Write(b)
 }
 
@@ -184,12 +189,14 @@ func lintFiles(filenames ...string) {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return
 	}
+	// TODO: maybe write + calculate suggestions in the same loop, but for now who cares.
 	for _, p := range ps {
 		if p.Confidence >= *minConfidence {
-			formatter.Write(p)
 			suggestions++
 		}
 	}
+
+	formatter.Write(ps)
 }
 
 func lintDir(dirname string) {

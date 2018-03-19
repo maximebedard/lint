@@ -1,3 +1,4 @@
+// shitty comment
 package main
 
 import "fmt"

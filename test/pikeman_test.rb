@@ -5,7 +5,7 @@ class PikemanTest < Minitest::Test
     path = "./test/fixtures/shittymain.go"
     expected = Pikeman::Error.new(
       filename: "./test/fixtures/shittymain.go",
-      line: 5,
+      line: 6,
       column: 6,
       text: "exported type Patate should have comment or be unexported",
       link: "https://golang.org/wiki/CodeReviewComments#doc-comments",
